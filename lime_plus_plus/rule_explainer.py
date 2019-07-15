@@ -1,3 +1,5 @@
+import warnings
+warnings.simplefilter('ignore', category=DeprecationWarning)
 from random import shuffle
 from itertools import product
 from collections import Counter
@@ -74,7 +76,7 @@ class RuleExplainer():
     return local_dt
 
   def explain(self, model_pred_proba, local_dt, to_explain):
-    prediction = model_pred_proba(self.one_hot.transform(to_explain.reshape(1, -1)))
+    prediction = int(model_pred_proba(self.one_hot.transform(to_explain.reshape(1, -1)))[:, 1] > 0.5)
     path = local_dt.decision_path(self.one_hot.transform(to_explain.reshape(1, -1)))
     final_node_id = local_dt.apply(self.one_hot.transform(to_explain.reshape(1, -1)))
     feature = local_dt.tree_.feature
@@ -85,7 +87,7 @@ class RuleExplainer():
                               path.indptr[sample_id + 1]]
 
     print('Rule faithfulness (weighted acc): {}'.format(eval_faithfulness(self.weights, self.trans, lambda x: model_pred_proba(x)[:, 1], local_dt.predict)))
-    print('Rules used to predict sample %s: with prediction %s' % (sample_id, self.target_names[prediction[0]]))
+    print('Rules used to predict sample %s: with prediction %s' % (sample_id, self.target_names[prediction]))
     for node_id in node_index:
       if final_node_id[sample_id] == node_id:
         continue

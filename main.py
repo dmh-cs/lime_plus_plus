@@ -51,3 +51,4 @@ def main():
     model = explainer.train_local_tree(to_explain,
                                        rf.predict_proba,
                                        num_samples=10000)
+    explainer.explain(rf.predict_proba, model, to_explain)
