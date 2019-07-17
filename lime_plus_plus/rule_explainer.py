@@ -15,11 +15,22 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.tree import DecisionTreeRegressor
 import graphviz
 
+import certifai.lib.model as model
+from certifai.lib.model import Certifai
+from certifai.lib.score_helpers import *
+from certifai.utils.utils import LOG
+import logging
+LOG.setLevel(logging.ERROR)
+
+import json
+
 from .evaluation import eval_faithfulness
+from .certifai_features import diabetes_features
 
 class RuleExplainer():
-  def __init__(self, train_data, feature_names, target_names, max_rule_len, categorical_features, from_training_set, one_hot, cat_mapping, kernel_width=None):
+  def __init__(self, train_data, feature_names, target_names, max_rule_len, categorical_features, from_training_set, one_hot, cat_mapping, certifai, kernel_width=None):
     self.train_data, self.feature_names, self.max_rule_len, self.categorical_features, self.from_training_set, self.one_hot = train_data, feature_names, max_rule_len, categorical_features, from_training_set, one_hot
+    self.certifai = certifai
     self.target_names = target_names
     self.cat_mapping = cat_mapping
     self.scaler = sklearn.preprocessing.StandardScaler()
@@ -42,7 +53,19 @@ class RuleExplainer():
       return np.sqrt(np.exp(-(d ** 2) / kernel_width ** 2)).reshape(-1)
     self.kernel_fn = kernel
 
-  def train_local_tree(self, row, model_pred_proba, num_samples):
+  def train_local_tree(self, row, model, num_samples):
+    predict_proba = model.predict_proba
+    if self.certifai:
+      hyper_params = {
+        "tournsize": 3,
+        "population": 10000,
+        "population_data_points": 0,
+        "burdenFlag": True
+      }
+      options = {}
+      cert = Certifai(model, diabetes_features)
+      cftl_info = cert.generate_counterfactuals(row.reshape(1, -1), options, **hyper_params)
+      counterfactual = np.array(cftl_info['counterfactuals'][0]['bestIndividual'])
     if self.from_training_set not in [None, 0.0]:
       num_from_train = int(self.from_training_set * num_samples)
       num_random_samples = num_samples - num_from_train
@@ -51,7 +74,13 @@ class RuleExplainer():
     else:
       num_from_train = 0
       num_random_samples = num_samples
-    perturbed = row + np.random.normal(0, 1, (num_random_samples, len(row))) * self.scaler.scale_
+    if self.certifai:
+      perturbed = []
+      for sample in [row, counterfactual]:
+        perturbed.append(sample + np.random.normal(0, 1, (num_random_samples, len(row))) * self.scaler.scale_)
+      perturbed = np.concatenate(perturbed, 0)
+    else:
+      perturbed = row + np.random.normal(0, 1, (num_random_samples, len(row))) * self.scaler.scale_
     for column in self.categorical_features:
       values = self.feature_values[column]
       freqs = self.feature_frequencies[column]
@@ -70,7 +99,7 @@ class RuleExplainer():
     self.trans = trans
     self.distances = distances
     self.weights = weights
-    labels = model_pred_proba(trans)
+    labels = predict_proba(trans)
     local_dt = DecisionTreeRegressor(max_depth=self.max_rule_len - 1)
     local_dt.fit(trans, labels[:, 1], sample_weight=weights / weights.sum())
     return local_dt
@@ -93,13 +122,19 @@ class RuleExplainer():
         continue
 
       feature_idx = feature[node_id]
-      name_idx = np.searchsorted(self.one_hot.feature_indices_[1:], feature_idx)
-      is_cat = name_idx < len(self.cat_mapping)
-      if is_cat:
-        feature_value = self.cat_mapping[self.feature_names[name_idx]][int(to_explain[name_idx])]
+      if hasattr(self.one_hot, 'feature_indices_'):
+        name_idx = np.searchsorted(self.one_hot.feature_indices_[1:], feature_idx)
+        is_cat = name_idx < len(self.cat_mapping)
+        if is_cat:
+          feature_value = self.cat_mapping[self.feature_names[name_idx]][int(to_explain[name_idx])]
+        else:
+          name_idx = feature_idx - max(self.one_hot.feature_indices_) + len(self.cat_mapping)
+          feature_value = to_explain[name_idx]
       else:
-        name_idx = feature_idx - max(self.one_hot.feature_indices_) + len(self.cat_mapping)
+        name_idx = feature_idx
         feature_value = to_explain[name_idx]
+        is_cat = False
+
       if (self.one_hot.transform(to_explain.reshape(1, -1))[0, feature[node_id]] <= threshold[node_id]):
         threshold_sign = "<="
       else:

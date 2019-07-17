@@ -1,6 +1,16 @@
 import pydash as _
 import pandas as pd
 
+def diabetes():
+  feature_names = ['NumPregnancies','Glucose','BloodPressure','SkinThickness','Insulin','BMI','DiabetesPedigree','Age']
+  cat_mapping = {}
+  types = {'NumPregnancies':int,'Glucose':int,'BloodPressure':int,'SkinThickness':int,'Insulin':int,'BMI':float,'DiabetesPedigree':float,'Age':int}
+  df = pd.read_csv('./data/diabetes_dataset.csv', header=0, names=feature_names + ['Outcome'], dtype=types)
+  df.rename(columns={'Outcome': 'target'}, inplace=True)
+  target_names = ['not diagnosed', 'diagnosed']
+  feature_names = sorted(feature_names)
+  return df[feature_names + ['target']], feature_names, cat_mapping, target_names
+
 def adult():
   feature_names = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status', 'occupation', 'relationship', 'race', 'sex', 'capital-gain', 'capital-loss', 'hours-per-week', 'native-country']
   cat_mapping = {
@@ -13,9 +23,10 @@ def adult():
     'sex': ['Female', 'Male'],
     'native-country': ['United-States', 'Cambodia', 'England', 'Puerto-Rico', 'Canada', 'Germany', 'Outlying-US(Guam-USVI-etc)', 'India', 'Japan', 'Greece', 'South', 'China', 'Cuba', 'Iran', 'Honduras', 'Philippines', 'Italy', 'Poland', 'Jamaica', 'Vietnam', 'Mexico', 'Portugal', 'Ireland', 'France', 'Dominican-Republic', 'Laos', 'Ecuador', 'Taiwan', 'Haiti', 'Columbia', 'Hungary', 'Guatemala', 'Nicaragua', 'Scotland', 'Thailand', 'Yugoslavia', 'El-Salvador', 'Trinadad&Tobago', 'Peru', 'Hong', 'Holand-Netherlands']
   }
-  adult = pd.read_csv('./data/adult.data', header=None, names=feature_names + ['target'])
+  df = pd.read_csv('./data/adult.data', header=None, names=feature_names + ['target'])
   for col_name, options in cat_mapping.items():
-    adult[col_name] = adult[col_name].apply(lambda x: _.index_of(options, x.strip()))
-    adult[col_name] = adult[col_name].apply(lambda x: x if (x != -1) else max(adult[col_name]) + 1)
+    df[col_name] = df[col_name].apply(lambda x: _.index_of(options, x.strip()))
+    df[col_name] = df[col_name].apply(lambda x: x if (x != -1) else max(df[col_name]) + 1)
   target_names = ['<=50K', '>50K']
-  return adult, feature_names, cat_mapping, target_names
+  df.target = df.target.apply(lambda x: '>' in x)
+  return df, feature_names, cat_mapping, target_names
