@@ -5,7 +5,7 @@
 #    pip-compile
 #
 graphviz==0.11.1
-joblib==0.13.2            # via scikit-learn
+joblib==1.2.0            # via scikit-learn
 numpy==1.16.4
 pandas==0.24.2
 pydash==4.7.5
